@@ -1,0 +1,69 @@
+# Configuración por defecto del benchmark. Todo lo que afecta al resultado vive aquí.
+seed: 42                      # semilla maestra: submuestreo, splits, modelos y bootstrap derivan de ella
+
+data:
+  name: qsar_biodeg           # dataset activo (clave de `datasets`); `--dataset` en la CLI lo sobreescribe
+  max_samples: 500            # submuestreo estratificado; el coste del kernel crece como O(N^2)
+  dir: data                   # caché local de descargas
+  datasets:
+    synthetic:
+      backend: synthetic      # sklearn.make_classification
+      n_samples: 500
+      n_features: 20
+      n_informative: 6
+      n_redundant: 4
+      n_clusters_per_class: 2
+      class_sep: 0.8
+      flip_y: 0.05
+      weights: [0.65, 0.35]
+    qsar_biodeg:
+      backend: arff_url       # QSAR biodegradation (Mansouri et al. 2013), OpenML id 1494
+      url: https://www.openml.org/data/v1/download/1592286
+      sha256: 959bdf9d436405525d63b01c85d8d5f6f9d5f8ff90f9b1d163ef8b5d7255722c
+      target: Class
+      positive_label: "2"     # 2 = fácilmente biodegradable (clase minoritaria, 356/1055)
+
+preprocess:
+  n_components: [4, 6, 8]     # componentes PCA = número de qubits
+  feature_range: [0.0, 1.0]   # rango de entrada del feature map
+
+cv:
+  n_seeds: 5                  # semillas = seed, seed+1, ...
+  n_splits: 5                 # CV estratificada externa
+  inner_splits: 3             # CV interna (hiperparámetros y pesos QMKL), solo sobre el train de cada fold
+
+class_weight: balanced        # se aplica a todos los modelos; null para desactivar
+
+models:
+  gradient_boosting:
+    params: {n_estimators: 200, subsample: 0.8}
+    grid: {learning_rate: [0.03, 0.1], max_depth: [2, 3]}
+  random_forest:
+    params: {n_estimators: 300}
+    grid: {min_samples_leaf: [1, 3]}
+  raw_feature_reference: true # GB/RF también sobre los descriptores originales (fila de referencia)
+  svm:
+    C_grid: [0.1, 1.0, 10.0, 100.0]
+    rbf_gamma_factors: [0.1, 1.0, 10.0]   # gamma = factor / (d * var(X_train))
+  qsvm:
+    reps: [1, 2]
+    entanglement: [linear, full]
+  qmkl:
+    n_random_weights: 32      # muestras Dirichlet además de vértices, uniforme y pesos por alineamiento
+
+bootstrap:
+  n_resamples: 2000
+  confidence: 0.95
+
+cache:
+  dir: .cache/kernels
+
+runtime:
+  n_jobs: 4                   # procesos en paralelo (uno por combinación n_components x semilla)
+
+mlflow:
+  tracking_uri: sqlite:///mlflow.db
+  experiment: qmkl-bench
+
+output:
+  dir: results
